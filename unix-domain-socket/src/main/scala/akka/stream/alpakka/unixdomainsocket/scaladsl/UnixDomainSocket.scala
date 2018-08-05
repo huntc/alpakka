@@ -297,7 +297,7 @@ object UnixDomainSocket extends ExtensionId[UnixDomainSocket] with ExtensionIdPr
           sent.future.map(_ => bytes)
         }
         .watchTermination() {
-          case (m, done) =>
+          case (_, done) =>
             done.onComplete { _ =>
               sendReceiveContext.send = if (halfClose) {
                 ShutdownRequested
