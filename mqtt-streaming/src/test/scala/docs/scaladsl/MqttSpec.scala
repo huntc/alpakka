@@ -77,6 +77,11 @@ class MqttSpec
       val pubAck = PubAck(PacketId(1))
       val pubAckBytes = pubAck.encode(ByteString.newBuilder).result()
 
+      val publish2 = Publish("some-topic", ByteString("some-payload"))
+      val publish2Bytes = publish2.encode(ByteString.newBuilder, Some(PacketId(2))).result()
+      val pubAck2 = PubAck(PacketId(2))
+      val pubAck2Bytes = pubAck2.encode(ByteString.newBuilder).result()
+
       client.offer(Command(connect))
 
       server.expectMsg(connectBytes)
@@ -92,7 +97,15 @@ class MqttSpec
       server.expectMsg(publishBytes)
       server.reply(pubAckBytes)
 
-      result.futureValue shouldBe List(Right(Event(connAck)), Right(Event(subAck)), Right(Event(pubAck)))
+      client.offer(Command(publish2))
+
+      server.expectMsg(publish2Bytes)
+      server.reply(pubAck2Bytes)
+
+      result.futureValue shouldBe List(Right(Event(connAck)),
+                                       Right(Event(subAck)),
+                                       Right(Event(pubAck)),
+                                       Right(Event(pubAck2)))
     }
 
     "Connect and carry through an object to ConnAck" in {
