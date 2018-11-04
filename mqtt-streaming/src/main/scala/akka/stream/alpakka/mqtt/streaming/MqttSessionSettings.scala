@@ -31,7 +31,8 @@ object MqttSessionSettings {
 final class MqttSessionSettings private (val maxPacketSize: Int = 4096,
                                          val maxClientConnectionStashSize: Int = 100,
                                          val clientTerminationWatcherBufferSize: Int = 100,
-                                         val commandParallelism: Int = 50,
+                                         val longLivedCommandParallelism: Int = 20,
+                                         val commandParallelism: Int = 20,
                                          val eventParallelism: Int = 10,
                                          val receiveConnectTimeout: FiniteDuration = 5.minutes,
                                          val receiveConnAckTimeout: FiniteDuration = 30.seconds,
@@ -43,8 +44,8 @@ final class MqttSessionSettings private (val maxPacketSize: Int = 4096,
                                          val serverSendBufferSize: Int = 100) {
 
   require(
-    commandParallelism >= 2,
-    s"commandParallelism of $commandParallelism must be greater than or equal to 2 to support connection replies such as pinging"
+    longLivedCommandParallelism >= 2,
+    s"longLivedCommandParallelism of $longLivedCommandParallelism must be greater than or equal to 2 to support connection replies such as pinging"
   )
   require(maxPacketSize >= 0 && maxPacketSize <= (1 << 28),
           s"maxPacketSize of $maxPacketSize must be positive and less than ${1 << 28}")
@@ -57,9 +58,19 @@ final class MqttSessionSettings private (val maxPacketSize: Int = 4096,
   def withMaxPacketSize(maxPacketSize: Int): MqttSessionSettings = copy(maxPacketSize = maxPacketSize)
 
   /**
-   * The number of commands that can be processed at a time, with a default of 50. For client usage, note that each
-   * CONNECT will reduced the availability of remaining command channels for other commands by 1. For server usage,
-   * each CONNACK received will reduce the availability of remaining command channels for other commands by 1.
+   * The number of potentially long-lived commands that can be processed at a time, with a default of 20.
+   * For clients, CONNECT and PUBLISH commands are potentially long-lived. A CONNECT will cause the command
+   * channel to be retained for sending PINGREQs periodically. PUBLISH commands can send PUBREL commands.
+   * Once a PUBLISH has completed then its channel is released.
+   * For servers, CONNACK commands are potentially long-lived as the channel is retained for publishing
+   * PINGRESP, PUBLISH and PUBREL.
+   */
+  def withLongLivedCommandParallelism(longLivedCommandParallelism: Int): MqttSessionSettings =
+    copy(longLivedCommandParallelism = longLivedCommandParallelism)
+
+  /**
+   * The number of shorter-lived commands that can be processed at a time, with a default of 20. These
+   * commands are all of the ones excluded from those described for source commands.
    */
   def withCommandParallelism(commandParallelism: Int): MqttSessionSettings =
     copy(commandParallelism = commandParallelism)
@@ -207,6 +218,7 @@ final class MqttSessionSettings private (val maxPacketSize: Int = 4096,
   private def copy(maxPacketSize: Int = maxPacketSize,
                    maxClientConnectionStashSize: Int = maxClientConnectionStashSize,
                    clientTerminationWatcherBufferSize: Int = clientTerminationWatcherBufferSize,
+                   longLivedCommandParallelism: Int = longLivedCommandParallelism,
                    commandParallelism: Int = commandParallelism,
                    eventParallelism: Int = eventParallelism,
                    receiveConnectTimeout: FiniteDuration = receiveConnectTimeout,
@@ -221,6 +233,7 @@ final class MqttSessionSettings private (val maxPacketSize: Int = 4096,
       maxPacketSize,
       maxClientConnectionStashSize,
       clientTerminationWatcherBufferSize,
+      longLivedCommandParallelism,
       commandParallelism,
       eventParallelism,
       receiveConnectTimeout,
@@ -234,5 +247,5 @@ final class MqttSessionSettings private (val maxPacketSize: Int = 4096,
     )
 
   override def toString: String =
-    s"MqttSessionSettings(maxPacketSize=$maxPacketSize,maxClientConnectionStashSize=$maxClientConnectionStashSize,clientTerminationWatcherBufferSize=$clientTerminationWatcherBufferSize,commandParallelism=$commandParallelism,eventParallelism=$eventParallelism,receiveConnectTimeout=$receiveConnectTimeout,receiveConnAckTimeout=$receiveConnAckTimeout,receivePubAckRecTimeout=$receivePubAckRecTimeout,receivePubCompTimeout=$receivePubCompTimeout,receivePubRelTimeout=$receivePubRelTimeout,receiveSubAckTimeout=$receiveSubAckTimeout,receiveUnsubAckTimeout=$receiveUnsubAckTimeout,serverSendBufferSize=$serverSendBufferSize)"
+    s"MqttSessionSettings(maxPacketSize=$maxPacketSize,maxClientConnectionStashSize=$maxClientConnectionStashSize,clientTerminationWatcherBufferSize=$clientTerminationWatcherBufferSize,longLivedCommandParallelism=$longLivedCommandParallelism,commandParallelism=$commandParallelism,eventParallelism=$eventParallelism,receiveConnectTimeout=$receiveConnectTimeout,receiveConnAckTimeout=$receiveConnAckTimeout,receivePubAckRecTimeout=$receivePubAckRecTimeout,receivePubCompTimeout=$receivePubCompTimeout,receivePubRelTimeout=$receivePubRelTimeout,receiveSubAckTimeout=$receiveSubAckTimeout,receiveUnsubAckTimeout=$receiveUnsubAckTimeout,serverSendBufferSize=$serverSendBufferSize)"
 }
