@@ -5,9 +5,13 @@
 package akka.stream.alpakka.mqtt.streaming
 package scaladsl
 
-import akka.NotUsed
-import akka.stream.scaladsl.BidiFlow
+import akka.stream.Materializer
+import akka.{Done, NotUsed}
+import akka.stream.scaladsl.{BidiFlow, Flow, Source}
 import akka.util.ByteString
+
+import scala.annotation.unchecked.uncheckedVariance
+import scala.concurrent.Promise
 
 object Mqtt {
 
@@ -22,8 +26,25 @@ object Mqtt {
    */
   def clientSessionFlow[A](
       session: MqttClientSession
-  ): BidiFlow[Command[A], ByteString, ByteString, Either[MqttCodec.DecodeError, Event[A]], NotUsed] =
-    BidiFlow.fromFlows(session.commandFlow, session.eventFlow)
+  )(
+      implicit mat: Materializer
+  ): BidiFlow[Command[A], ByteString, ByteString, Either[MqttCodec.DecodeError, Event[A]], NotUsed] = {
+    import mat.executionContext
+    val commandFlowCompleted = Promise[Done]
+    BidiFlow.fromFlows(
+      session.commandFlow.watchTermination() {
+        case (e, done) =>
+          done.foreach(commandFlowCompleted.success)
+          e
+      },
+      session.eventFlow.merge(
+        Source
+          .fromFuture(commandFlowCompleted.future)
+          .flatMapConcat(_ => Source.empty),
+        eagerComplete = true
+      )
+    )
+  }
 
   /**
    * Create a bidirectional flow that maintains server session state with an MQTT endpoint.
